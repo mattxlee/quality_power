@@ -1,19 +1,19 @@
 #include <openssl/sha.h>
 
 #include <iostream>
+#include <iosfwd>
+#include <iomanip>
 #include <sstream>
-
-#include <boost/multiprecision/gmp.hpp>
-#include <boost/multiprecision/mpfr.hpp>
-namespace mp = boost::multiprecision;
+#include <vector>
 
 #include <boost/program_options.hpp>
 namespace po = boost::program_options;
 
+#include "mpreal.h"
+typedef mpfr::mpreal Float;
 const int PRECISION = 300;
 
-typedef mp::number<mp::mpfr_float_backend<PRECISION>> Float;
-typedef mp::mpz_int Int;
+#define FLOAT(__f__) Float(__f__).setPrecision(PRECISION)
 
 struct Hash256 {
   unsigned char value[SHA256_DIGEST_LENGTH];
@@ -35,26 +35,22 @@ std::string ConvertToHexStr(Hash256 value) {
 }
 
 Float Calculate_n(int bits) {
-  Int a(2);
-  a = mp::pow(a, bits) * bits;
-  return a;
+  return mpfr::pow(FLOAT(2), bits) * bits;
 }
 
 Float Calculate_1n(Float n) { return 1 / n; }
 
-Int Calculate_2pow256() {
-  Int a(2);
-  a = mp::pow(a, 256);
-  return a;
+Float Calculate_2pow256() {
+  return mpfr::pow(FLOAT(2), 256);
 }
 
 Float Calculate_quality(Hash256 val, int bits) {
   Float n = Calculate_n(bits);
-  Int s(ConvertToHexStr(val));
-  Float a = Float(s) / Float(Calculate_2pow256());
+  Float s(ConvertToHexStr(val), PRECISION, 16);;
+  Float a = s / Calculate_2pow256();
   Float b = Calculate_1n(n);
-  Float quality = mp::pow(a, b);
-  Float rq = mp::pow(quality, n) * Calculate_2pow256();
+  Float quality = mpfr::pow(a, b);
+  Float rq = mpfr::pow(quality, n) * Calculate_2pow256();
   return quality;
 }
 
@@ -91,6 +87,12 @@ int Calculate_w(Float q, const Hash256 &val, int num_of_samples = 128) {
   return best_bits;
 }
 
+std::tuple<Float, Float> Calculate_N(Float q) {
+  Float N2 = 1 / mpfr::log2(1 / q);
+  Float N3 = 1 / -mpfr::log2(q);
+  return std::make_tuple(N2, N3);
+}
+
 struct Arguments {
   int bits;
   int samples;
@@ -122,6 +124,12 @@ int main(int argc, const char *argv[]) {
     std::cout << "quality=" << q << std::endl;
     int w_bits = Calculate_w(q, h256, args.samples);
     std::cout << "w=" << w_bits << std::endl;
+    Float N = mpfr::pow(FLOAT(2), FLOAT(w_bits)) * FLOAT(w_bits);
+    std::cout << "N=" << N << std::endl;
+    Float N2, N3;
+    std::tie(N2, N3) = Calculate_N(q);
+    std::cout << "N2=" << N2 << std::endl;
+    std::cout << "N3=" << N3 << std::endl;
   } catch (std::exception &e) {
     std::cout << e.what() << std::endl;
     return 1;
